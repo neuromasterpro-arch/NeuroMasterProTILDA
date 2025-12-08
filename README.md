@@ -1,2 +1,1 @@
-# NeuroMasterProTILDA
 Проект века
