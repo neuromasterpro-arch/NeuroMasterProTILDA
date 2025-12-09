@@ -1,0 +1,93 @@
+<script src="https://yastatic.net/share2/share.js" defer></script>
+<script defer>
+
+const ShareEntity = {
+    selectors: {
+        // Берём данные из <title>, <meta name="description"> и <meta property="og:image">
+        pageTitle: document.title,
+        pageDescription: document.querySelector('meta[name="description"]')?.content || pageTitle,
+        pageImage: document.querySelector('meta[property="og:image"]')?.content || ''
+    }
+}
+
+function shareTextInitialize(num, answerText) {
+    let text = answerText;
+    if (text.length > 700) text = text.slice(0, 697) + '.';
+    
+    const shareData = {
+      title: ShareEntity.selectors.pageTitle,
+      url: window.location.href,
+      text: text + '\n',
+    };
+
+    if (window.Ya?.share2) {
+        let share = Ya.share2(`share${num}`, {
+            content: {
+            title: answerText,
+            description: answerText,
+            image: 'https://optim.tildacdn.com/tild3839-6139-4866-a461-333565363338/-/resize/560x/-/format/webp/noroot.jpg'
+            },
+            contentByService: {
+                vkontakte: {
+                    title: 'НейроГенератор GPT – Генератор профессиональных текстов с помощью ИИ',
+                    description: 'НейроГенератор GPT – Генератор профессиональных текстов с помощью ИИ'
+                },
+                odnoklassniki: {
+                    title: 'НейроГенератор GPT – Генератор профессиональных текстов с помощью ИИ',
+                    description: 'НейроГенератор GPT – Генератор профессиональных текстов с помощью ИИ'
+                }
+            },
+            theme: {
+                size: 's',
+                shape: 'round',
+                limit: 0,
+                moreButtonType: 'short',
+                useLinks: true,
+                services: 'vkontakte,odnoklassniki,telegram,viber,whatsapp,pinterest'
+            },
+            hooks: {
+                onready: function() {
+                    const ul = document.querySelector('#share' + num + ' .ya-share2__list_direction_vertical');
+                    ul.insertAdjacentHTML('afterbegin', '<li class="ya-share2__item" style="cursor: default; text-align: center;">Поделиться</li>');
+                }
+            }
+        });
+    
+      const shareButton = document.querySelector('.ya-share2__link_more-button-type_short');
+      const sharePopup = document.querySelector('.ya-share2__popup_direction_bottom');
+      shareButton?.addEventListener('touchend', async () => {
+        sharePopup?.remove();
+        if (navigator.share) await navigator.share(shareData);
+      });
+    }
+}
+
+function addShareButton(num, answerText, buttonsContainer) {
+  const divShare = document.createElement('div');
+  divShare.className = 'ya-share2 ya-share2_inited';
+  divShare.id = `share${num}`;
+
+  buttonsContainer.insertBefore(divShare, buttonsContainer.lastElementChild.previousElementSibling);
+  shareTextInitialize(num, answerText);
+}
+
+window.addEventListener('responseReceived', (e) => {
+  const { num, answerText } = e.detail || {};
+
+  if (!num) return console.warn('responseReceived без num');
+
+  const block = document.getElementById(`block${num}`);
+  if (!block) {
+    return console.warn('Не найден block' + num);
+  }
+
+  const buttonsContainer = block.querySelector('.form4__btns_container');
+  if (!buttonsContainer) {
+    return console.warn('Не найден .form4__btns_container в block' + num);
+  }
+
+  if (block.querySelector('.ya-share2')) return;
+  addShareButton(num, answerText, buttonsContainer);
+  
+});
+</script>
