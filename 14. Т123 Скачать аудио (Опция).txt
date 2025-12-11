@@ -1,0 +1,363 @@
+<script>
+const downloadAudioEntity = {
+  state: {
+    lastAudioURL: null,
+    lastAudioID: null,
+  }
+};
+
+(function() {
+  let isModalOpened = false;
+  let timerId = null;
+  let isAudioLost = false;
+
+  function showLoadingModal() {
+    if (isModalOpened) return;
+    isModalOpened = true;
+    if (typeof openModalWithText === "function") {
+      openModalWithText("Аудио загружается, подождите...");
+    } else {
+      const bg = document.createElement("div");
+      bg.className = "modalBackground";
+      bg.innerHTML = '<div class="modalContent">Аудио загружается, подождите...</div>';
+      document.body.appendChild(bg);
+    }
+
+    timerId = setTimeout(() => {
+      document.querySelector('.modalBackground')?.remove();
+      isModalOpened = false;
+      isAudioLost = true;
+    }, 20000);
+  }
+
+  function closeLoadingModal() {
+    document.querySelector('.modalBackground')?.remove();
+    isModalOpened = false;
+    isAudioLost = false;
+    if (timerId) {
+      clearTimeout(timerId);
+      timerId = null;
+    }
+  }
+
+  function directDownloadOrOpenBlank(url, filename) {
+    try {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename || '';
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('directDownloadOrOpenBlank error', err);
+    }
+  }
+  
+    async function directDownload(url, filename) {
+        try {
+          const res = await fetch(url, { cache: 'no-store' });
+          if (!res.ok) throw new Error('Bad audio response');
+          const blob = await res.blob();
+          const a = document.createElement('a');
+          const objectUrl = URL.createObjectURL(blob);
+          a.href = objectUrl;
+          a.download = filename || 'audio.mp3';
+          a.style.display = 'none';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => {
+            URL.revokeObjectURL(objectUrl);
+            a.remove();
+          }, 2000);
+        } catch (e) {
+          console.error('directDownload error:', e);
+          throw e;
+        }
+    }
+
+  function addDownloadButton(num) {
+    if (!num && num !== 0) return;
+
+    const block = document.getElementById("block" + num);
+    if (!block) return;
+
+    const paragraph = block.querySelector('.form4__paragraph');
+    if (!paragraph) return;
+
+    const buttonsContainer = block.querySelector(".form4__btns_container");
+    if (!buttonsContainer) return;
+
+    if (buttonsContainer.querySelector(".form4__button.speech-download")) return;
+
+    const playBtn = buttonsContainer.querySelector(".form4__button.speech");
+    if (!playBtn) return;
+
+    const downloadBtn = document.createElement("button");
+    downloadBtn.type = "button";
+    downloadBtn.title = "Скачать аудио";
+    downloadBtn.className = "form4__button speech-download";
+    downloadBtn.setAttribute('data-goal', 'audio_download'); // Цель для Метрики
+    downloadBtn.dataset.answerNum = num;
+
+    downloadBtn.innerHTML =
+      '<svg width="23" height="23" viewBox="0 0 24 24" aria-hidden="true">' +
+        '<g fill="none" stroke="currentColor" stroke-width="1.4" ' +
+           'stroke-linecap="round" stroke-linejoin="round">' +
+          '<line x1="12" y1="4"  x2="12" y2="13" />' +
+          '<polyline points="9,10 12,13 15,10" />' +
+          '<line x1="7"  y1="18" x2="17" y2="18" />' +
+        '</g>' +
+      '</svg>';
+
+    buttonsContainer.insertBefore(downloadBtn, playBtn);
+  }
+
+  function addDownloadButtonsForAllExisting() {
+    const paragraphs = document.querySelectorAll(".form4__paragraph[id^='answer']");
+    paragraphs.forEach(function(p) {
+      const id = p.id || "";
+      const num = id.replace("answer", "");
+      if (!num && num !== 0) return;
+      addDownloadButton(num);
+    });
+  }
+
+  function waitForAudioUrl({ playBtn, expectedId, maxMs = 15000, pollInterval = 300 }) {
+    console.log('Clicked')
+    return new Promise((resolve) => {
+      const start = Date.now();
+
+      const check = () => {
+        if (playBtn && playBtn.dataset && playBtn.dataset.audioUrl) {
+          resolve(playBtn.dataset.audioUrl);
+          return;
+        }
+
+        if (expectedId != null && downloadAudioEntity.state.lastAudioID != null) {
+          if (String(downloadAudioEntity.state.lastAudioID) === String(expectedId) && downloadAudioEntity.state.lastAudioURL) {
+            resolve(downloadAudioEntity.state.lastAudioURL);
+            return;
+          }
+        }
+
+        if (Date.now() - start >= maxMs) {
+          resolve(null);
+          return;
+        }
+        setTimeout(check, pollInterval);
+      };
+
+      check();
+    });
+  }
+
+  async function waitForStableSize(url, { maxMs = 5000, interval = 500 } = {}) {
+    const start = Date.now();
+    let prevSize = null;
+
+    async function headSize() {
+      try {
+        const response = await fetch(url, { method: 'HEAD', cache: 'no-cache', mode: 'cors' });
+        if (!response.ok) return null;
+        const len = response.headers.get('Content-Length') || response.headers.get('content-length');
+        if (!len) return null;
+        const parsed = parseInt(len, 10);
+        if (Number.isNaN(parsed)) return null;
+        return parsed;
+      } catch (e) {
+          if (e.message?.includes("Failed to fetch")) {
+            console.log('Повторяем попытку запроса...')
+            return;
+          }
+        return null;
+      }
+    }
+    
+
+    while (Date.now() - start < maxMs) {
+      const size = await headSize();
+      if (size === null) return null;
+
+      if (prevSize !== null) {
+        if (size === prevSize && size > 0) {
+          return true;
+        }
+      }
+
+      prevSize = size;
+      await new Promise(r => setTimeout(r, interval));
+    }  
+
+    return false;
+  }
+
+  // --- функция генерации/скачивания аудио (TTS API) ---
+  function downloadAudio(num, currentAnswer) {
+    const voiceAPISber = 'https://vpsneuromaster.ru/api/v1/generation/text_to_speech/sber';
+
+    async function getAudioFromAPI(id, answer) {
+      const requestOptions = {
+        method: "POST",
+        cache: 'no-store',
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Cache-Control": 'no-store'
+        },
+        body: JSON.stringify({
+          "id_answer": id.toString(),
+          "answer": answer,
+          "visitorId": (window.App && App.state && App.state.visitorId) || null,
+          "path": (window.App && App.config && App.config.apiPath) || null,
+        }),
+      };
+
+      try {
+        const response = await fetch(voiceAPISber, requestOptions);
+
+        if (!response.ok) {
+          let res = null;
+          try { res = await response.json(); } catch (e) { /* ignore */ }
+
+          if (res && res.message_code === 'Превышение лимита озвучки') {
+            if (typeof openLimitModal === 'function') openLimitModal('генераций озвучки', res.message);
+            return;
+          }
+
+          await new Promise(r => setTimeout(r, 1000));
+          return getAudioFromAPI(id, answer);
+        }
+
+        const responseJson = await response.json();
+        const audioURL = responseJson && responseJson.audio_url;
+        if (!audioURL) {
+          console.error('TTS API вернул ответ без audio_url', responseJson);
+          return;
+        }
+
+        downloadAudioEntity.state.lastAudioURL = audioURL;
+        downloadAudioEntity.state.lastAudioID = id;
+
+        const speechBtn = document.getElementById(`speech${id}`);
+        if (speechBtn) speechBtn.dataset.audioUrl = audioURL;
+
+        return;
+      } catch (e) {
+        console.error('Ошибка при запросе TTS API:', e);
+        await new Promise(r => setTimeout(r, 500));
+        return getAudioFromAPI(id, answer);
+      }
+    }
+
+    const speechText = (window.SpeechUtils && SpeechUtils.prepareTextForSpeech)
+      ? SpeechUtils.prepareTextForSpeech(currentAnswer)
+      : (currentAnswer || "");
+    console.log('TTS TEXT >>>', (speechText || "").replace(/\n/g, '\\n'));
+
+    getAudioFromAPI(num, speechText);
+  }
+
+  document.addEventListener('click', async function(e) {
+    const btn = e.target.closest && e.target.closest('.form4__button.speech-download');
+    if (!btn) return;
+
+if (!btn) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+ 
+    const numAttr = btn.dataset.answerNum;
+    let num = null;
+    if (typeof numAttr !== 'undefined') {
+      num = numAttr;
+    } else {
+      const block = btn.closest('[id^="block"]');
+      if (block) {
+        const id = block.id || "";
+        num = id.replace("block", "");
+      }
+    }
+
+    let answerText = "";
+    if (num !== null && (num !== "")) {
+      const blockEl = document.getElementById("block" + num);
+      if (blockEl) {
+        const p = blockEl.querySelector('.form4__paragraph');
+        if (p) answerText = p.textContent.trim();
+      }
+    } else {
+      const pNearest = btn.closest('.form4__btns_container')?.previousElementSibling;
+      if (pNearest && pNearest.classList.contains('form4__paragraph')) {
+        answerText = pNearest.textContent.trim();
+      }
+    }
+
+    const playBtn = btn.closest('.form4__btns_container')?.querySelector('.form4__button.speech');
+
+    async function ensureAndDownload(urlToCheck, filename, expectedIdForWait = null) {
+      showLoadingModal();
+
+      const stable = await waitForStableSize(urlToCheck, { maxMs: 10000, interval: 700 });
+
+      if (stable === true) {
+        closeLoadingModal();
+        directDownload(urlToCheck, filename);
+        return;
+      }
+
+      if (stable === false) {
+        closeLoadingModal();
+        console.warn('Размер не стабилизировался в отведённое время — пробуем скачать всё равно.');
+        directDownloadOrOpenBlank(urlToCheck, filename);
+      }
+
+      await new Promise(r => setTimeout(r, 5000));
+      closeLoadingModal();
+      directDownloadOrOpenBlank(urlToCheck, filename);
+    }
+
+    if (typeof num !== 'undefined' && num !== null && answerText) {
+      const [isUserAgreed, userFilename] = await openConfirmModal(e, 'Аудиофайл будет загружен на ваш компьютер. Продолжить?', downloadAudio, num, answerText);
+      if (!userFilename) userFilename = `audio_${num}.mp3`;
+      if (!isUserAgreed) return;
+      const url = await waitForAudioUrl({ playBtn: null, expectedId: num, maxMs: 18000, pollInterval: 400 });
+      
+    //   if (playBtn && playBtn.dataset && playBtn.dataset.audioUrl) {
+    //       console.log('button')
+    //       const urlFromData = playBtn.dataset.audioUrl;
+    //       await ensureAndDownload(urlFromData, `audio_${num || 'unknown'}.mp3`);
+    //       return;
+    //   }
+
+      if (url) {
+        await ensureAndDownload(url, userFilename, num);
+        return;
+      } else {
+        closeLoadingModal();
+        console.warn('Не удалось получить audio_url в отведённое время.');
+        return;
+      }
+    } else {
+      console.warn('Не удалось определить номер ответа или текст для скачивания аудио.');
+    }
+  }, true);
+
+  window.addEventListener("responseReceived", function(e) {
+    const detail = e.detail || {};
+    const num = detail.num;
+    setTimeout(function() {
+      addDownloadButton(num);
+    }, 0);
+  });
+
+  window.addEventListener("load", function() {
+    addDownloadButtonsForAllExisting();
+  });
+
+  window.downloadAudioEntity = downloadAudioEntity;
+})();
+</script>

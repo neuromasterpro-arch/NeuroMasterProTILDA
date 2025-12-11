@@ -1,0 +1,282 @@
+<!-- 6 Загрузка фото с Обрезкой -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js" defer></script>
+
+<!-- Сжатие -->
+<script src="https://cdn.jsdelivr.net/gh/WangYuLue/image-conversion/build/conversion.js" defer></script>
+
+<script>
+const ImageEntity = {
+  config: {
+    maxImageSizeMb: 7,
+    isImageRequired: App.config.isImageRequired,
+  },
+  state: {
+    cropper: null,
+    isCropped: false,
+  },
+  selectors: {},
+};
+
+/* ====== Основная логика выбора ====== */
+function inputTextChange() {
+  const file = ImageEntity.selectors.inputImageForm.files[0];
+  const inputText = ImageEntity.selectors.inputText;
+  const selectImageButton = ImageEntity.selectors.selectImageButton;
+  ImageEntity.state.isCropped = false;
+
+  // Сбрасываем все состояния
+  selectImageButton.classList.remove(
+    'form1_input__file-button--default',
+    'form1_input__file-button--disabled',
+    'form1_input__file-button--error'
+  );
+
+  try {
+    if (!file) {
+      selectImageButton.classList.add('form1_input__file-button--default');
+      inputText.textContent = 'Файл не выбран';
+      inputText.style.color = 'black';
+      return;
+    }
+
+    if (!file.type.includes('image')) {
+      inputText.textContent = 'Выбранный файл не является фотографией. Пожалуйста, загрузите фото';
+      inputText.style.color = 'red';
+      selectImageButton.classList.add('form1_input__file-button--error');
+      return;
+    }
+
+    selectImageButton.classList.add('form1_input__file-button--disabled');
+    inputText.style.color = 'black';
+    inputText.textContent = file.name;
+    
+    // После выбора — запуск cropper
+    openModalWithText("Обрабатывается...");
+    setTimeout(() => showCropper(file), 500);
+
+  } catch (e) {
+    if (e instanceof TypeError) {
+      selectImageButton.classList.add('form1_input__file-button--default');
+      inputText.textContent = 'Файл не выбран';
+    }
+  }
+}
+
+
+/* ====== Проверка размера ====== */
+function imageSizeCheck() {
+  const photoInput = ImageEntity.selectors.inputImageForm;
+  let inputText = ImageEntity.selectors.inputText;
+  if (!photoInput || !photoInput.files || !photoInput.files[0]) return true;
+  const sizeMb = photoInput.files[0].size / (1024 * 1024);
+  if (sizeMb > ImageEntity.config.maxImageSizeMb) {
+    inputText.textContent = 'Выбранный файл слишком большой';
+    inputText.style.color = 'red';
+    return false;
+  } else {
+    inputText.style.color = '#0a2540';
+    inputText.textContent = photoInput.files[0].name;
+    return true;
+  }
+}
+
+/* ====== Обрезка изображения через Cropper.js ====== */
+function showCropper(file) {
+  const inputText = ImageEntity.selectors.inputText;
+  const inputImageForm = ImageEntity.selectors.inputImageForm;
+  
+  function addRemoveImageListener() {
+    setTimeout(() => {
+      const removeBtn = inputText.querySelector('#remove-image');
+      removeBtn.addEventListener('click', () => {
+        inputText.textContent = 'Файл не выбран';
+        inputText.style.color = 'black';
+        inputImageForm.value = '';
+        const selectImageButton = ImageEntity.selectors.selectImageButton;
+        selectImageButton.classList.remove(
+          'form1_input__file-button--disabled',
+          'form1_input__file-button--error'
+        );
+        selectImageButton.classList.add('form1_input__file-button--default');
+     });  
+    }, 200);
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    inputText.innerHTML = `
+    <div class="image-preview" style="position: relative; display: inline-block; width: 100%;">
+        <img id="crop-image" src="${e.target.result}" style="width:100%; height:auto; display:block; margin:0 auto;">
+        <button type="button" id="remove-image" class="remove-image">
+        ×
+      </button>
+      <br>
+      <button type="button" id="crop-confirm" class="form1_input__file-button crop-button">Обрезать фото</button>
+    </div>
+    `;
+    
+    addRemoveImageListener();
+
+    const cropImage = document.getElementById('crop-image');
+    const cropConfirmBtn = document.getElementById('crop-confirm');
+
+    if (ImageEntity.state.cropper) ImageEntity.state.cropper.destroy();
+
+    ImageEntity.state.cropper = new Cropper(cropImage, {
+      restore: false,
+      responsive: false,
+      aspectRatio: NaN,
+      viewMode: 1,
+      autoCropArea: 1,
+      ready() {
+        closeProcessingModal();
+        setTimeout(() => scrollSendIntoViewBottom(16), 30);
+      }
+    });
+
+    cropConfirmBtn.onclick = function() {
+      openModalWithText("Обрабатывается...");
+      setTimeout(() => {
+        const canvas = ImageEntity.state.cropper.getCroppedCanvas();
+        inputText.innerHTML = 
+        `
+        <div class="image-preview" style="position: relative; display: inline-block; width: 100%;">
+            <img src="${canvas.toDataURL()}" alt="Обрезанное фото" 
+            style="width:100%; height:auto; display:block; margin:0 auto;">
+            <button type="button" id="remove-image" class="remove-image">
+                ×
+            </button>
+        </div>
+        `;
+        
+        addRemoveImageListener();
+
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const fileCropped = new File([blob], "cropped.png", { type: "image/png" });
+            const dt = new DataTransfer();
+            dt.items.add(fileCropped);
+            inputImageForm.files = dt.files;
+          }
+          closeProcessingModal();
+          setTimeout(() => scrollSendIntoViewBottom(16), 30);
+        });
+
+        ImageEntity.state.cropper.destroy();
+        ImageEntity.state.isCropped = true;
+      }, 400);
+    };
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ====== Сжатие ====== */
+async function compressImage() {
+  const image = ImageEntity.selectors.inputImageForm.files[0];
+  if (!image) return null;
+  try {
+    const res = await imageConversion.compressAccurately(image, 200);
+    return res;
+  } catch {
+    return image;
+  }
+}
+
+  /* ====== Скролл ====== */
+function scrollSendIntoViewBottom(offset = 12) {
+    const sendButton = App.selectors.sendButton;
+    if (!sendButton) return;
+    const rect = sendButton.getBoundingClientRect();
+    const targetTop = window.scrollY + rect.bottom - window.innerHeight + offset;
+    window.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
+}
+
+/* ====== Изменение изображения ====== */
+function imageChange() {
+  if (!imageSizeCheck()) return;
+  inputTextChange();
+}
+
+/* ====== Создание поля загрузки ====== */
+function createPhotoUploadField() {
+  const wrapper = document.createElement('div');
+  wrapper.classList.add('form1_input__wrapper');
+
+  const input = document.createElement('input');
+  input.name = 'photo';
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.id = 'photo';
+  input.classList.add('input', 'form1_input__file');
+  input.required = ImageEntity.config.isImageRequired;
+
+  const label = document.createElement('label');
+  label.setAttribute('for', 'photo');
+  label.classList.add('form1_input__file-button');
+  label.setAttribute('data-goal', 'form_upload_photo');
+
+  const span = document.createElement('span');
+  span.classList.add('form1_input__file-button-text');
+  span.textContent = 'Загрузить фото';
+  label.appendChild(span);
+
+  const p = document.createElement('p');
+  p.classList.add('form1_input__info-image');
+  p.textContent = 'Файл не выбран';
+
+  wrapper.appendChild(input);
+  wrapper.appendChild(label);
+  wrapper.appendChild(p);
+
+  return wrapper;
+}
+
+function insertPhotoUploadField() {
+  const form = App.selectors.form;
+  const field = createPhotoUploadField();
+  const children = form.children;
+  const insertBeforeEl = children[children.length - 1];
+  form.insertBefore(field, insertBeforeEl);
+}
+
+function initConditionalRequired() {
+  const form = App.selectors.form;
+  const photoInput = ImageEntity.selectors.inputImageForm;
+  if (!form || !photoInput) return;
+
+  // Находим первое поле формы (textarea, input или select)
+  const firstField = form.querySelector('textarea, input, select');
+  if (!firstField) return;
+  
+  if (firstField.hasAttribute('required') || App.config.isImageRequired) return;
+
+  const toggleRequired = () => {
+    const hasPhoto = photoInput.files && photoInput.files.length > 0;
+    firstField.required = !hasPhoto;
+  };
+
+  // При выборе фото переключаем required
+  photoInput.addEventListener('change', toggleRequired);
+
+  // Проверяем сразу при инициализации
+  toggleRequired();
+}
+
+/* ====== Инициализация ====== */
+function imageInit() {
+  insertPhotoUploadField();
+  ImageEntity.selectors = {
+    inputImageForm: document.getElementById('photo'),
+    inputText: document.querySelector('.form1_input__info-image'),
+    selectImageButton: document.querySelector('.form1_input__file-button')
+  };
+
+  ImageEntity.selectors.inputImageForm.addEventListener('change', imageChange);
+  initConditionalRequired();
+}
+
+document.addEventListener('DOMContentLoaded', imageInit);
+
+
+</script>

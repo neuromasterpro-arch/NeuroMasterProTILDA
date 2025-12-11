@@ -1,0 +1,245 @@
+<script>
+
+function openPopup(popup) {
+    var link = document.createElement('a');
+    link.setAttribute('href', popup);
+    document.body.appendChild(link);
+    link.click();
+}
+
+
+function openTemplateModal(event) {
+  event.preventDefault();
+  const headerElem = document.createElement('h3');
+  headerElem.textContent = 'Загрузить шаблон'; 
+  headerElem.classList.add('templateModalHeader');
+  const messageElem = document.createElement('p');
+  messageElem.innerHTML = 'Откройте сохраненный ранее шаблон на устройстве.<br><br></div>';
+ // messageElem.innerHTML = 'Начните с готового примера или загрузите свой шаблон с компьютера.<br><br><div class="templateModalSpan"><strong>Пример</strong> — вставим образец<br><strong>Файл</strong> — загрузите сохранённый шаблон</div>';
+  messageElem.classList.add('templateModalMessage');
+  const modal = document.createElement('div');
+  const wrapper = document.createElement('div');
+  wrapper.classList.add('modalWrapper');
+  wrapper.classList.add('modalBackgroundColor');
+  modal.classList.add('modalBackground');
+  modal.classList.add('modalBackgroundShadow');
+  const modalContent = document.createElement('div');
+  modalContent.classList.add('modalContent');
+
+  const buttonWrapper = document.createElement('div');
+  buttonWrapper.classList.add('modalButtonWrapper');
+
+  // 1. Кнопка "Стандартный шаблон"
+//   const button = document.createElement('button');
+//   button.classList.add('modalButton');
+//   button.textContent = 'Пример';
+//   button.onclick = function (event) {
+//         handleJsonDefaultUpload(event, 'form1')
+//         modal.remove();
+//     }
+
+  // 2. Кнопка "Свой шаблон"
+  const customWrapper = document.createElement('div');
+  customWrapper.classList.add('fileInputWrapper');
+
+  const customInput = document.createElement('input');
+  customInput.type = 'file';
+  customInput.accept = '.json';
+  customInput.id = 'customTemplate';
+  customInput.classList.add('hiddenFileInput');
+
+  const customLabel = document.createElement('label');
+  customLabel.htmlFor = 'customTemplate';
+  customLabel.classList.add('fileInputLabel');
+  customLabel.textContent = 'Открыть файл';
+
+
+  customInput.onchange = function(event) {
+      handleJsonUpload(event, 'form1')
+      modal.remove();
+  };
+
+  customWrapper.appendChild(customInput);
+  customWrapper.appendChild(customLabel);
+
+
+  //buttonWrapper.appendChild(button);
+  buttonWrapper.appendChild(customWrapper);
+
+
+  wrapper.appendChild(headerElem);
+  wrapper.appendChild(messageElem);
+
+  wrapper.appendChild(buttonWrapper);
+  modalContent.appendChild(wrapper);
+  modal.appendChild(modalContent);
+  document.body.append(modal);
+
+  window.onclick = function(event) {
+    if (event.target == modal) {
+        modal.remove();
+    }
+  }
+}
+
+// Создание модального окна для подтверждения сохранения шаблона
+function openConfirmModal(event, message, fn, ...presetArgs) {
+    event.preventDefault();
+    
+    return new Promise((resolve) => {
+        const messageElem = document.createElement('p');
+     
+        messageElem.textContent = message; 
+        
+        const modal = document.createElement('div');
+        const wrapper = document.createElement('div');
+        wrapper.classList.add('modalWrapper');
+        wrapper.classList.add('modalBackgroundColor');
+        modal.classList.add('modalBackground');
+        modal.classList.add('modalBackgroundShadow');
+        const modalContent = document.createElement('div');
+        modalContent.classList.add('modalContent');
+        const input = document.createElement('input');
+        input.classList.add('modalInput');
+        input.placeholder = 'Введите название файла';
+        input.value = document.title.slice(0, 31);
+        setTimeout(() => {
+            input.focus();
+        }, 1)
+    
+        const header = document.createElement('h1');
+        header.classList.add('modalHeader')
+        const button = document.createElement('button');
+        button.classList.add('modalButtonSave');
+        button.textContent = 'Да, скачать файл';
+        const button2 = document.createElement('button');
+        button2.classList.add('modalButtonSave');
+        button2.textContent = 'Отмена';
+        const buttonWrapper = document.createElement('div');
+        buttonWrapper.classList.add('modalButtonWrapper');
+        button.onclick = async function (ev) {
+            try {
+                if (typeof fn === 'function') {
+                  if (fn.name === "exportToJson") {
+                    await fn(event, input.value, ...presetArgs);
+                  } else {
+                    await fn(...presetArgs);
+                  }
+                }
+                resolve([true, input.value]);
+            } catch (err) {
+                console.error(err);
+                resolve(false);
+            } finally {
+                modal.remove();
+            }
+        };
+        
+        button2.onclick = function () {
+            modal.remove();
+            resolve(false);
+        }
+        wrapper.appendChild(messageElem);
+        wrapper.appendChild(input);
+        buttonWrapper.appendChild(button);
+        buttonWrapper.appendChild(button2);
+        wrapper.appendChild(buttonWrapper);
+        modalContent.appendChild(wrapper);
+        modal.appendChild(modalContent);
+        document.body.append(modal);
+        
+        window.onclick = function(event) {
+          if (event.target == modal) {
+              modal.remove();
+              resolve(false);
+          }
+        }
+    });
+}
+
+// Создание модального окна для превышения суточного лимита загрузок фото
+function openLimitModal(headerText, message) {
+    const messageElem = document.createElement('p');
+    
+    messageElem.innerHTML = `
+      Возможность ${headerText} у вас появится через:
+      <span class='modalSpan'>${message.hours} ${message.minutes}</span>.<br><br>
+      Или воспользуйтесь другими страницами сайта.<br><br>
+      Чтобы не потерять свои данные "<span class='modalSpan'>Сохраните Шаблон</span>"<br><br>
+     `;
+
+ 
+    // Выводим сообщение
+    //messageElem.innerHTML = textHtml; 
+    
+    const modal = document.createElement('div');
+    const wrapper = document.createElement('div');
+    wrapper.classList.add('modalWrapper');
+    modal.classList.add('modalBackground');
+    modal.classList.add('modalBackgroundShadow');
+    modal.classList.add('modalBackgroundAnimationIn');
+    const modalContent = document.createElement('div');
+    modalContent.classList.add('modalContent');
+    modalContent.classList.add('modalAnimationIn')
+    
+    const header = document.createElement('h1');
+    header.classList.add('modalHeader')
+    header.textContent = 'Лимит ' + headerText + ' исчерпан';
+    const button = document.createElement('button');
+    button.classList.add('modalButton');
+    button.textContent = 'Закрыть';
+    // const img = document.createElement('img');
+    // img.classList.add('modalImg');
+    // img.src = 'https://static.tildacdn.com/tild6637-3436-4337-b163-396636386561/x1600_adc85e33ca.jpg';
+    button.onclick = function () {
+        modal.classList.remove('modalBackgroundAnimationIn');
+        modal.classList.add('modalBackgroundAnimationOut');
+        modalContent.classList.remove('modalAnimationIn');
+        modalContent.classList.add('modalAnimationOut');
+        setTimeout(function() {modal.remove()}, 500); // Таймаут чтобы анимация закрытия модального окна успела проиграться
+    }
+    
+    //modalContent.appendChild(img);
+    wrapper.appendChild(header);
+    wrapper.appendChild(messageElem);
+    wrapper.appendChild(button);
+    modalContent.appendChild(wrapper);
+    modal.appendChild(modalContent);
+    document.body.append(modal);
+    
+    window.onclick = function(event) {
+      if (event.target == modal) {
+        modal.classList.remove('modalBackgroundAnimationIn');
+        modal.classList.add('modalBackgroundAnimationOut');
+        modalContent.classList.remove('modalAnimationIn');
+        modalContent.classList.add('modalAnimationOut');
+        setTimeout(function() {modal.remove()}, 500); // Таймаут чтобы анимация закрытия модального окна успела проиграться
+      }
+    }
+}
+
+// ====== Жёлтый pop-up "Аудио загружается..." ======
+function openModalWithText(message) {
+  const messageElem = document.createElement('p');
+  messageElem.textContent = message;
+  messageElem.classList.add('dotAnimation');
+
+  const modal = document.createElement('div');
+  modal.classList.add('modalBackground', 'processingPopup');
+
+  const wrapper = document.createElement('div');
+  wrapper.classList.add('modalWrapper');
+
+  const modalContent = document.createElement('div');
+  modalContent.classList.add('modalAudioContent');
+
+  wrapper.appendChild(messageElem);
+  modalContent.appendChild(wrapper);
+  modal.appendChild(modalContent);
+  document.body.append(modal);
+}
+
+function closeProcessingModal() { 
+    document.querySelector('.processingPopup')?.remove(); 
+}
+</script>

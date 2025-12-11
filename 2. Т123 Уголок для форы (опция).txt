@@ -1,0 +1,46 @@
+ <!-- === Код с уголком (ресайзером) === -->
+<script>
+  (() => {
+    document.querySelectorAll('.form1_input__wrapper_micIcon-textarea').forEach(wrapper => {
+      const textarea = wrapper.querySelector('.form1__textarea');
+      if (!textarea) return;
+
+      const resizer = document.createElement('div');
+      resizer.classList.add('custom-resizer');
+      wrapper.appendChild(resizer);
+
+      let isResizing = false, startY, startHeight;
+      const startResize = (clientY) => { 
+        isResizing = true; 
+        startY = clientY; 
+        startHeight = textarea.offsetHeight; 
+        document.body.style.userSelect = 'none'; 
+      };
+      const doResize = (clientY) => { 
+        if (!isResizing) return; 
+        const dy = clientY - startY; 
+        textarea.style.height = `${Math.max(40, startHeight + dy)}px`; 
+      };
+      const stopResize = () => { 
+        isResizing = false; 
+        document.body.style.userSelect = ''; 
+      };
+
+      resizer.addEventListener('mousedown', (e) => startResize(e.clientY));
+      document.addEventListener('mousemove', (e) => doResize(e.clientY));
+      document.addEventListener('mouseup', stopResize);
+
+      resizer.addEventListener('touchstart', (e) => { 
+        e.preventDefault(); 
+        startResize(e.touches[0].clientY); 
+      }, { passive: false });
+      document.addEventListener('touchmove', (e) => { 
+        if (isResizing) { 
+          e.preventDefault(); 
+          doResize(e.touches[0].clientY); 
+        } 
+      }, { passive: false });
+      document.addEventListener('touchend', stopResize);
+    });
+  })();
+</script>
